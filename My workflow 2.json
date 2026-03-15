@@ -1,0 +1,201 @@
+{
+  "name": "My workflow 2",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -496,
+        0
+      ],
+      "id": "0d4aaaf8-9a7b-452d-9d01-64f5116a509b",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=printf \"CPU:%.1f%% | MEM:%.1f%% | DISK:%s\" $(awk '/cpu /{u=$2+$4; t=$2+$3+$4+$5; print (u/t)*100}' /proc/stat) $(awk '/MemTotal/{t=$2} /MemAvailable/{a=$2} END{print (1-a/t)*100}' /proc/meminfo) $(df / | awk 'NR==2{print $5}')\n\n\n"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -336,
+        0
+      ],
+      "id": "49edb5c7-4a3c-4509-926d-010c585cecb0",
+      "name": "Execute a command",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "0XkxukqFvXwnE4W7",
+          "name": "SSH Password account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.stdout;\n\nif (!raw || raw.trim() === '') {\n  throw new Error('No output from SSH command');\n}\n\nconst parts = raw.split('|');\n\nreturn [{\n  json: {\n    cpu: parts[0] ? parts[0].trim() : 'N/A',\n    memory: parts[1] ? parts[1].trim() : 'N/A',\n    disk: parts[2] ? parts[2].trim() : 'N/A',\n    raw: raw,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        0
+      ],
+      "id": "dd0ceca0-9f75-42b4-b5a7-61f67fe1156a",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": " Bearer YOUR_GROQ_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\"model\":\"llama-3.3-70b-versatile\",\"messages\":[{\"role\":\"user\",\"content\":\"Analyze these server metrics in 3 sentences and suggest any actions needed. CPU: {{ $json.cpu }} Memory: {{ $json.memory }} Disk: {{ $json.disk }}\"}]}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -16,
+        0
+      ],
+      "id": "54623ff9-dca4-42c8-8c00-9fe152acfc25",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst aiText = response.choices[0].message.content;\n\nreturn [{\n  json: {\n    ai_analysis: aiText\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        192,
+        0
+      ],
+      "id": "5c2faad4-c012-4789-93e8-32cba48742f3",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "devops",
+          "mode": "name"
+        },
+        "text": "=🖥️ *Server Health Report*\n💻 {{ $('Code in JavaScript').first().json.cpu }}\n🧠 {{ $('Code in JavaScript').first().json.memory }}\n💾 {{ $('Code in JavaScript').first().json.disk }}\n\n🤖 *AI Analysis:*\n{{ $json.ai_analysis }}\n\n🕐 {{ $('Code in JavaScript').first().json.timestamp }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        400,
+        0
+      ],
+      "id": "337da2f9-b0c6-4c26-a870-57f3e20b7abc",
+      "name": "Send a message",
+      "webhookId": "c6b6f992-4ef0-43e1-b8dd-31433928bced",
+      "credentials": {
+        "slackApi": {
+          "id": "W620QHZEl000TRSO",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a command": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "885594ef-a24d-446c-8233-34df47fe06ef",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b4b2281aedebb7c1cef9c7ede08963debc404a640fb181c84c211d43705aa381"
+  },
+  "id": "xt2hNFyHktJY1CBI",
+  "tags": []
+}
+
